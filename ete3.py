@@ -223,39 +223,43 @@ def main():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def save_uploaded_image(uploaded_file, day, track):
-    if not os.path.exists('gallery_images'):
-        os.makedirs('gallery_images')
+    # Use st.session_state to store images in memory during the session
+    if 'gallery_images' not in st.session_state:
+        st.session_state.gallery_images = {}
     
     # Create a unique filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     file_extension = uploaded_file.name.split('.')[-1]
     filename = f"{day}_{track}_{timestamp}.{file_extension}"
-    filepath = os.path.join('gallery_images', filename)
     
-    # Save the file
-    with open(filepath, 'wb') as f:
-        f.write(uploaded_file.getbuffer())
+    # Store the image data in session state
+    st.session_state.gallery_images[filename] = {
+        'data': uploaded_file.getvalue(),
+        'day': day,
+        'track': track
+    }
     
-    return filepath
+    return filename
 
 def load_gallery_images(day, track="All Tracks"):
-    if not os.path.exists('gallery_images'):
+    if 'gallery_images' not in st.session_state:
         return []
     
     images = []
-    for filename in os.listdir('gallery_images'):
-        if filename.startswith(day.replace(" ", "_")):
+    for filename, image_data in st.session_state.gallery_images.items():
+        if image_data['day'] == day:
             if track == "All Tracks" or track in filename:
-                filepath = os.path.join('gallery_images', filename)
-                images.append(filepath)
+                images.append(filename)
     return images
 
-def delete_image(image_path):
-    try:
-        os.remove(image_path)
-        return True
-    except Exception as e:
-        return False
+def get_image_data(filename):
+    if filename in st.session_state.gallery_images:
+        return st.session_state.gallery_images[filename]['data']
+    return None
+
+def delete_image(filename):
+    if filename in st.session_state.gallery_images:
+        del st.session_state.gallery_images[filename]
 
 def text_analysis_page():
     st.title("📝 Feedback Analysis")
@@ -458,23 +462,25 @@ def image_processing_page():
             for idx, image_path in enumerate(gallery_images):
                 with cols[idx % 3]:
                     try:
-                        img = Image.open(image_path)
-                        # Resize image to maintain consistent size
-                        img.thumbnail((300, 300))
-                        st.image(img, caption=f"{selected_day} - {os.path.basename(image_path).split('_')[1]}")
+                        image_data = get_image_data(image_path)
+                        if image_data:
+                            img = Image.open(io.BytesIO(image_data))
+                            # Resize image to maintain consistent size
+                            img.thumbnail((300, 300))
+                            st.image(img, caption=f"{selected_day} - {os.path.basename(image_path).split('_')[1]}")
                         
-                        # Add delete button for each image
-                        if st.button("🗑️ Delete", key=f"delete_{idx}_{image_path}"):
-                            if delete_image(image_path):
-                                st.success("Image deleted successfully!")
-                                st.rerun()
-                            else:
-                                st.error("Failed to delete image.")
+                            # Add delete button for each image
+                            if st.button("🗑️ Delete", key=f"delete_{idx}_{image_path}"):
+                                if delete_image(image_path):
+                                    st.success("Image deleted successfully!")
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to delete image.")
                         
                     except Exception as e:
                         st.error(f"Error loading image: {str(e)}")
         else:
-            if os.path.exists('gallery_images') and len(os.listdir('gallery_images')) > 0:
+            if 'gallery_images' in st.session_state and len(st.session_state.gallery_images) > 0:
                 st.info(f"No images found for {selected_day} - {selected_track}")
             else:
                 # Show demo images only if no real images exist
